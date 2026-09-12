@@ -1,16 +1,17 @@
-# 🌊 FloodReady AI - Pakistan Disaster Preparedness Engine
+# 🌊 FloodReady AI - Pakistan Disaster & Weather Intelligence Engine
 
-FloodReady AI is a hyper-personalized disaster response and climate preparedness engine built specifically for Pakistan's flood-prone regions. Rather than returning generic safety guidelines, it uses Retrieval-Augmented Generation (RAG) powered by **Groq** to transform official disaster advisories (NDMA, PDMAs, FFD) into localized, timed 24-hour preparedness and evacuation plans in both **English and Roman Urdu**.
+FloodReady AI is an open-source, hyper-personalized disaster response and climate preparedness engine engineered specifically for Pakistan’s flood-prone regions. Built to address severe climate threats—ranging from urban flash floods in Rawalpindi’s Nullah Lai basin to Glacial Lake Outburst Floods (GLOFs) in Gilgit-Baltistan and riverine inundations across KPK, Punjab, and Sindh—FloodReady AI bridges the critical gap between official advisories and household-level action.
 
 ---
 
 ## 🚀 Key Features
 
 - **Personalized Household Context:** Tailors actions based on district location, proximity to streams (e.g., Nullah Lai, Swat River), number of vulnerable members (elderly, infants), and vehicle availability.
+- **Live Weather & Rain Prediction Analytics:** Interactive 7-day and 24-hour weather charts powered by Open-Meteo and Plotly.
 - **Dual-Language Guidance:** Delivers step-by-step actions in English and conversational Roman Urdu.
-- **Fast Groq LLM Inference:** Powered by Meta's open-weights models (`llama-3.3-70b-versatile` or `llama-3.1-8b-instant`) running on Groq's high-speed LPU infrastructure.
+- **Active Groq LLM Inference:** Powered by Meta's active open-weights models (`llama-3.3-70b-versatile`, `mixtral-8x7b-32768`, `gemma2-9b-it`) running on Groq's high-speed LPU infrastructure.
 - **Lightweight CPU Vector RAG:** Uses `sentence-transformers/all-MiniLM-L6-v2` and `FAISS` for fast, zero-cost vector search without external embedding API dependencies.
-- **Verified Emergency Directory:** One-stop offline-friendly directory for Rescue 1122, NDMA, PDMAs, Edhi, AlKhidmat, PRCS, and GBDMA.
+- **Verified Disaster Directory:** Includes a direct directory connecting users to Rescue 1122, NDMA, PDMAs, Edhi Foundation, AlKhidmat, PRCS, and GBDMA control rooms.
 
 ---
 
@@ -22,8 +23,8 @@ FloodReady AI is a hyper-personalized disaster response and climate preparedness
 
 ### 2. Clone Repository & Setup Virtual Environment
 ```bash
-git clone [https://github.com/your-username/floodready-ai.git](https://github.com/your-username/floodready-ai.git)
-cd floodready-ai
+git clone [https://github.com/ZaraFatima207/Floodready-AI.git](https://github.com/ZaraFatima207/Floodready-AI.git)
+cd Floodready-AI
 
 python -m venv venv
 # On Windows:
