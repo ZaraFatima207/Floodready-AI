@@ -1,5 +1,10 @@
 import os
+import requests
+import pandas as pd
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import streamlit as st
+
 from langchain_core.documents import Document
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
@@ -63,10 +68,44 @@ Format your output cleanly using Markdown with the following structure:
 """
 
 # ---------------------------------------------------------------------------
-# 3. KNOWLEDGE BASE DATASET (PAKISTAN ADVISORIES & DIRECTORY)
+# 3. GEOGRAPHIC COORDINATES & LIVE WEATHER FETCHING
+# ---------------------------------------------------------------------------
+DISTRICT_COORDINATES = {
+    "Rawalpindi": {"lat": 33.5970, "lon": 73.0439},
+    "Swat": {"lat": 34.7717, "lon": 72.3602},
+    "Hunza": {"lat": 36.3167, "lon": 74.6500},
+    "D.G. Khan": {"lat": 30.0561, "lon": 70.6348},
+    "Sukkur": {"lat": 27.7052, "lon": 68.8574},
+    "Other (National)": {"lat": 33.6844, "lon": 73.0479}
+}
+
+@st.cache_data(ttl=1800)
+def fetch_weather_forecast(lat: float, lon: float):
+    """Fetches 7-day daily and 24-hour hourly weather forecast from Open-Meteo."""
+    try:
+        url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,weathercode&hourly=temperature_2m,precipitation_probability,rain&timezone=Asia%2FKarachi"
+        res = requests.get(url, timeout=10)
+        if res.status_code == 200:
+            return res.json()
+    except Exception as e:
+        st.warning(f"Could not fetch live weather data: {e}")
+    return None
+
+def interpret_weather_code(code: int) -> str:
+    """Maps WMO Weather Codes to human-readable strings."""
+    codes = {
+        0: "Clear Sky ☀️",
+        1: "Mainly Clear 🌤️", 2: "Partly Cloudy ⛅", 3: "Overcast ☁️",
+        45: "Foggy 🌫️", 51: "Light Drizzle 🌧️", 61: "Slight Rain 🌧️",
+        63: "Moderate Rain 🌧️", 65: "Heavy Rain ⛈️", 80: "Rain Showers 🌦️",
+        95: "Thunderstorm 🌩️", 96: "Thunderstorm with Hail ⛈️"
+    }
+    return codes.get(code, "Cloudy / Variable ⛅")
+
+# ---------------------------------------------------------------------------
+# 4. KNOWLEDGE BASE DATASET (PAKISTAN ADVISORIES & DIRECTORY)
 # ---------------------------------------------------------------------------
 PAKISTAN_DISASTER_KNOWLEDGE_BASE = [
-    # Rawalpindi & Nullah Lai Basin
     {
         "district": "Rawalpindi",
         "authority": "PDMA Punjab / District Admin Rawalpindi",
@@ -75,7 +114,6 @@ Alert Level 1 (11 ft): Monitoring; Alert Level 2 (14 ft): Standby Evacuation; Cr
 Safe Relief Shelters: Govt Gordon College Rawalpindi, Govt High School Westridge, Govt College Asghar Mall.
 Helplines: Rescue 1122, Rawalpindi District Control Room: 051-929296, PDMA Punjab Helpline: 1129."""
     },
-    # Swat & Upper KPK
     {
         "district": "Swat",
         "authority": "PDMA KPK",
@@ -84,7 +122,6 @@ Safe Relief Shelters: Govt High School Kalam, Govt Degree College Mingora.
 Helplines: Rescue 1122, PDMA KPK Emergency Hotline: 1700, WhatsApp: 0316-4261700.
 Evacuation Strategy: Move away from riverbanks to elevated ridges immediately upon heavy rain upstream."""
     },
-    # Gilgit-Baltistan (GLOF & Landslides)
     {
         "district": "Hunza",
         "authority": "GBDMA / AKAH",
@@ -93,7 +130,6 @@ Community Early Warning: Local siren system + Acoustic sensors monitored by Aga 
 Relief Shelters: AKAH Community Centers, Govt Boys High School Hunza.
 Helplines: GBDMA Control Room: 05811-920830, Rescue 1122 GB."""
     },
-    # Plain Basins (South Punjab & Sindh)
     {
         "district": "D.G. Khan",
         "authority": "NDMA / PDMA Punjab",
@@ -108,7 +144,6 @@ Helplines: Rescue 1122, PDMA Punjab: 1129, NDMA Helpline: 051-111-157-157."""
 Relief Shelters: Govt Degree Colleges and Tents managed by PDMA Sindh.
 Helplines: PDMA Sindh Control Room: 021-99332005, Rescue 1122 Sindh, Edhi Emergency: 115."""
     },
-    # National Helplines & Field Relief Directory
     {
         "district": "National",
         "authority": "National Directory",
@@ -124,13 +159,12 @@ Ecosystem & Long-Term Measures: Replanting Willow & Poplar trees on slopes (GB/K
 ]
 
 # ---------------------------------------------------------------------------
-# 4. INITIALIZE VECTOR STORE & CACHE RESOURCE
+# 5. VECTOR STORE LOADER
 # ---------------------------------------------------------------------------
 @st.cache_resource
 def load_vector_store():
     """Builds an in-memory FAISS vector index using CPU-friendly HuggingFace Embeddings."""
     embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
-    
     documents = [
         Document(
             page_content=item["content"],
@@ -138,17 +172,14 @@ def load_vector_store():
         )
         for item in PAKISTAN_DISASTER_KNOWLEDGE_BASE
     ]
-    
-    vector_store = FAISS.from_documents(documents, embeddings)
-    return vector_store
+    return FAISS.from_documents(documents, embeddings)
 
 # ---------------------------------------------------------------------------
-# 5. SIDEBAR: USER INPUTS & GROQ CONFIGURATION
+# 6. SIDEBAR: USER INPUTS & GROQ CONFIGURATION
 # ---------------------------------------------------------------------------
 st.sidebar.title("🌊 FloodReady AI")
 st.sidebar.markdown("**Personalized Disaster Preparedness Engine**")
 
-# Groq API Key Handling
 groq_api_key = st.sidebar.text_input(
     "Groq API Key",
     type="password",
@@ -156,18 +187,17 @@ groq_api_key = st.sidebar.text_input(
     help="Get a free key from console.groq.com"
 )
 
-# Active Groq Models List
+# Actively supported Groq production models
 selected_model = st.sidebar.selectbox(
-    "LLM Architecture (Groq)",
+    "LLM Model (Groq Active Endpoints)",
     [
         "llama-3.3-70b-versatile",
-        "llama3-8b-8192",
-        "llama-3.2-3b-preview",
         "mixtral-8x7b-32768",
-        "llama-3.1-8b-instant"
+        "gemma2-9b-it",
+        "llama-3.2-3b-preview"
     ],
     index=0,
-    help="Select an active Groq model endpoint."
+    help="Selected active Groq model."
 )
 
 st.sidebar.markdown("---")
@@ -179,9 +209,9 @@ district = st.sidebar.selectbox(
 )
 
 proximity_tag = st.sidebar.text_input(
-    "Specific Neighborhood / Drainage Stream",
+    "Specific Neighborhood / Stream",
     value="Near Nullah Lai (Arya Mohallah)",
-    help="e.g., Near Nullah Lai, Swat River Bank, Passu Village, Hill Torrent Basin"
+    help="e.g., Near Nullah Lai, Swat River Bank, Passu Village"
 )
 
 total_members = st.sidebar.number_input("Total Household Members", min_value=1, max_value=20, value=5)
@@ -190,13 +220,21 @@ children_count = st.sidebar.number_input("Children / Infants", min_value=0, max_
 has_vehicle = st.sidebar.checkbox("Household Has Motor Vehicle", value=True)
 
 # ---------------------------------------------------------------------------
-# 6. MAIN INTERFACE & TABS
+# 7. MAIN INTERFACE & TABS
 # ---------------------------------------------------------------------------
 st.markdown("<div class='main-header'>🌊 FloodReady AI Engine</div>", unsafe_allow_html=True)
-st.markdown("<div class='sub-header'>Anticipatory Disaster Preparedness & Action Plan for Pakistan</div>", unsafe_allow_html=True)
+st.markdown("<div class='sub-header'>Anticipatory Disaster Preparedness & Live Weather Intelligence for Pakistan</div>", unsafe_allow_html=True)
 
-tab1, tab2, tab3 = st.tabs(["📋 24-Hour Action Plan", "📞 Emergency Directory", "🌿 Ecosystem Protection"])
+tab1, tab2, tab3, tab4 = st.tabs([
+    "📋 24-Hour Action Plan", 
+    "🌤️ Weather & Flood Analytics", 
+    "📞 Emergency Directory", 
+    "🌿 Ecosystem Protection"
+])
 
+# ---------------------------------------------------------------------------
+# TAB 1: 24-HOUR ACTION PLAN
+# ---------------------------------------------------------------------------
 with tab1:
     st.markdown(f"""
     <div class='alert-card'>
@@ -207,9 +245,9 @@ with tab1:
 
     if st.button("⚡ Generate 24-Hour Personalized Plan"):
         if not groq_api_key:
-            st.error("Please enter a valid Groq API Key in the sidebar or set it in Streamlit Secrets (`GROQ_API_KEY`).")
+            st.error("Please enter a valid Groq API Key in the sidebar or set `GROQ_API_KEY` in Streamlit Secrets.")
         else:
-            with st.spinner("Retrieving official advisories & generating dual-language action plan..."):
+            with st.spinner("Retrieving advisories & generating personalized plan..."):
                 try:
                     # 1. Retrieve Context from FAISS
                     vector_store = load_vector_store()
@@ -249,19 +287,110 @@ with tab1:
                         "context": context_str
                     })
                     
-                    # Display Result
                     st.markdown("---")
                     st.markdown(response)
                     
                 except Exception as e:
-                    if "model_not_found" in str(e) or "404" in str(e):
-                        st.error("⚠️ Model endpoint error. Please select **'llama-3.3-70b-versatile'** or **'llama3-8b-8192'** from the sidebar dropdown.")
-                    else:
-                        st.error(f"Error generating plan: {str(e)}")
+                    st.error(f"Error executing plan generation: {str(e)}")
 
+# ---------------------------------------------------------------------------
+# TAB 2: WEATHER & FLOOD RISK GRAPHICAL ANALYTICS
+# ---------------------------------------------------------------------------
 with tab2:
+    st.subheader(f"🌦️ Live Weather & Flood Prediction for {district}")
+    
+    coords = DISTRICT_COORDINATES.get(district, DISTRICT_COORDINATES["Other (National)"])
+    weather_data = fetch_weather_forecast(coords["lat"], coords["lon"])
+    
+    if weather_data and "daily" in weather_data:
+        daily = weather_data["daily"]
+        dates = daily["time"]
+        max_temps = daily["temperature_2m_max"]
+        min_temps = daily["temperature_2m_min"]
+        precip_sum = daily["precipitation_sum"]
+        precip_prob = daily["precipitation_probability_max"]
+        weather_codes = daily["weathercode"]
+        
+        # Display Metric Widgets
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Today's Weather", interpret_weather_code(weather_codes[0]))
+        col2.metric("Today's Max Temp", f"{max_temps[0]} °C")
+        col3.metric("Total 7-Day Expected Rain", f"{sum(precip_sum):.1f} mm")
+        col4.metric("Peak Rain Probability", f"{max(precip_prob)} %")
+        
+        st.markdown("---")
+        st.markdown("### 📊 7-Day Weather Forecast & Rainfall Probability")
+        
+        # Plotly Subplot: Temperature Curve & Rainfall Bar Chart
+        fig = make_subplots(
+            rows=2, cols=1, 
+            shared_xaxes=True, 
+            vertical_spacing=0.12,
+            subplot_titles=("7-Day Temperature Range (°C)", "Daily Expected Precipitation (mm) & Rain Probability (%)")
+        )
+        
+        # Temperature Traces
+        fig.add_trace(
+            go.Scatter(x=dates, y=max_temps, name="Max Temp (°C)", line=dict(color="#EF4444", width=3), mode="lines+markers"),
+            row=1, col=1
+        )
+        fig.add_trace(
+            go.Scatter(x=dates, y=min_temps, name="Min Temp (°C)", line=dict(color="#3B82F6", width=2, dash="dash"), mode="lines+markers"),
+            row=1, col=1
+        )
+        
+        # Rain Volume Bar Chart
+        fig.add_trace(
+            go.Bar(x=dates, y=precip_sum, name="Rainfall (mm)", marker_color="#1D4ED8", opacity=0.7),
+            row=2, col=1
+        )
+        
+        # Rain Probability Scatter Line
+        fig.add_trace(
+            go.Scatter(x=dates, y=precip_prob, name="Rain Prob (%)", line=dict(color="#10B981", width=2), mode="lines+markers"),
+            row=2, col=1
+        )
+        
+        fig.update_layout(height=500, margin=dict(l=20, r=20, t=40, b=20), hovermode="x unified")
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # 24-Hour High Resolution Timeline
+        st.markdown("---")
+        st.markdown("### ⏱️ Next 24-Hour Hourly Precipitation Risk Timeline")
+        if "hourly" in weather_data:
+            hourly = weather_data["hourly"]
+            df_hourly = pd.DataFrame({
+                "Time": [t.replace("T", " ") for t in hourly["time"][:24]],
+                "Temperature (°C)": hourly["temperature_2m"][:24],
+                "Rain Probability (%)": hourly["precipitation_probability"][:24],
+                "Rain Volume (mm)": hourly["rain"][:24]
+            })
+            
+            fig_hourly = go.Figure()
+            fig_hourly.add_trace(go.Bar(
+                x=df_hourly["Time"], 
+                y=df_hourly["Rain Volume (mm)"], 
+                name="Rain Volume (mm)", 
+                marker_color="#2563EB"
+            ))
+            fig_hourly.add_trace(go.Scatter(
+                x=df_hourly["Time"], 
+                y=df_hourly["Rain Probability (%)"], 
+                name="Rain Prob (%)", 
+                line=dict(color="#D97706", width=2)
+            ))
+            fig_hourly.update_layout(height=350, margin=dict(l=20, r=20, t=30, b=20), xaxis_title="Time", hovermode="x unified")
+            st.plotly_chart(fig_hourly, use_container_width=True)
+            
+    else:
+        st.info("Select a district from the sidebar to view weather predictions.")
+
+# ---------------------------------------------------------------------------
+# TAB 3: DIRECTORY
+# ---------------------------------------------------------------------------
+with tab3:
     st.subheader("📞 Verified Emergency Directory & Disaster Agencies")
-    st.write("Access direct helplines for rescue operations, field relief, and flood updates across Pakistan.")
+    st.write("Direct helplines for rescue operations, emergency medical transport, and flood relief across Pakistan.")
     
     directory_data = [
         {"Organization": "Rescue 1122", "Role": "Primary Medical, Fire & Evacuation Rescue", "Helpline": "1122", "Coverage": "Punjab, KPK, GB, AJK"},
@@ -278,7 +407,10 @@ with tab2:
     
     st.table(directory_data)
 
-with tab3:
+# ---------------------------------------------------------------------------
+# TAB 4: ECOSYSTEM BALANCE
+# ---------------------------------------------------------------------------
+with tab4:
     st.subheader("🌿 Ecosystem Balance & Long-Term Risk Mitigation")
     st.markdown("""
     Anticipatory flood safety requires long-term ecological restoration and community-level preventative actions alongside short-term alerts:
