@@ -148,7 +148,7 @@ def load_vector_store():
 st.sidebar.title("🌊 FloodReady AI")
 st.sidebar.markdown("**Personalized Disaster Preparedness Engine**")
 
-# Groq API Key Handling (Reads from Streamlit Secrets or manual input)
+# Groq API Key Handling
 groq_api_key = st.sidebar.text_input(
     "Groq API Key",
     type="password",
@@ -156,10 +156,18 @@ groq_api_key = st.sidebar.text_input(
     help="Get a free key from console.groq.com"
 )
 
+# Active Groq Models List
 selected_model = st.sidebar.selectbox(
-    "LLM Architecture (Groq Free Tier)",
-    ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"],
-    help="llama-3.3-70b-versatile delivers high reasoning quality; 8b-instant provides ultra-fast response speed."
+    "LLM Architecture (Groq)",
+    [
+        "llama-3.3-70b-versatile",
+        "llama3-8b-8192",
+        "llama-3.2-3b-preview",
+        "mixtral-8x7b-32768",
+        "llama-3.1-8b-instant"
+    ],
+    index=0,
+    help="Select an active Groq model endpoint."
 )
 
 st.sidebar.markdown("---")
@@ -190,7 +198,6 @@ st.markdown("<div class='sub-header'>Anticipatory Disaster Preparedness & Action
 tab1, tab2, tab3 = st.tabs(["📋 24-Hour Action Plan", "📞 Emergency Directory", "🌿 Ecosystem Protection"])
 
 with tab1:
-    # Live Hazard Banner
     st.markdown(f"""
     <div class='alert-card'>
         <strong>⚠️ Selected Zone:</strong> {district} ({proximity_tag})<br/>
@@ -247,7 +254,10 @@ with tab1:
                     st.markdown(response)
                     
                 except Exception as e:
-                    st.error(f"Error generating plan: {str(e)}")
+                    if "model_not_found" in str(e) or "404" in str(e):
+                        st.error("⚠️ Model endpoint error. Please select **'llama-3.3-70b-versatile'** or **'llama3-8b-8192'** from the sidebar dropdown.")
+                    else:
+                        st.error(f"Error generating plan: {str(e)}")
 
 with tab2:
     st.subheader("📞 Verified Emergency Directory & Disaster Agencies")
