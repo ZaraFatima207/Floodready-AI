@@ -13,7 +13,7 @@ from langchain_community.vectorstores import FAISS
 from langchain_huggingface import HuggingFaceEmbeddings
 
 # ---------------------------------------------------------------------------
-# 1. STREAMLIT PAGE CONFIGURATION
+# 1. STREAMLIT PAGE CONFIGURATION & STYLING
 # ---------------------------------------------------------------------------
 st.set_page_config(
     page_title="FloodReady AI - Pakistan Disaster Engine",
@@ -22,7 +22,6 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom Styling
 st.markdown("""
 <style>
     .main-header { font-size: 2.2rem; color: #1E3A8A; font-weight: 800; margin-bottom: 0px; }
@@ -185,17 +184,19 @@ groq_api_key = st.sidebar.text_input(
     help="Get a free key from console.groq.com"
 )
 
-# Active Groq production endpoints
-ACTIVE_MODELS = [
-    "llama-3.3-70b-versatile",
-    "llama-3.1-8b-instant"
+# Active Fast Non-Llama Production Models on Groq
+FAST_NON_LLAMA_MODELS = [
+    "openai/gpt-oss-20b",
+    "openai/gpt-oss-120b",
+    "qwen/qwen3.6-27b",
+    "groq/compound-mini"
 ]
 
 selected_model = st.sidebar.selectbox(
-    "LLM Model (Groq Active Endpoints)",
-    ACTIVE_MODELS,
+    "LLM Model (Fast Non-Llama Endpoints)",
+    FAST_NON_LLAMA_MODELS,
     index=0,
-    help="Select an active Groq production model."
+    help="Selected active non-Llama model hosted on Groq."
 )
 
 st.sidebar.markdown("---")
@@ -247,7 +248,7 @@ with tab1:
         else:
             with st.spinner("Retrieving advisories & generating personalized plan..."):
                 try:
-                    # 1. Retrieve Context from FAISS
+                    # 1. Retrieve Context from FAISS Vector Store
                     vector_store = load_vector_store()
                     query = f"Flood safety evacuation shelter emergency helpline {district} {proximity_tag}"
                     retrieved_docs = vector_store.similarity_search(query, k=3)
@@ -269,43 +270,41 @@ with tab1:
                         ("human", "Generate my personalized preparedness plan.")
                     ])
 
-                    # 2. Invoke Groq Model with automatic fallback handling
-                    model_to_use = selected_model
-                    try:
-                        llm = ChatGroq(
-                            groq_api_key=groq_api_key,
-                            model_name=model_to_use,
-                            temperature=0.1
-                        )
-                        chain = prompt | llm | StrOutputParser()
-                        response = chain.invoke({
-                            "location": f"{district} - {proximity_tag}",
-                            "household_profile": household_summary,
-                            "context": context_str
-                        })
-                    except Exception as inner_e:
-                        if "decommissioned" in str(inner_e).lower() or "400" in str(inner_e):
-                            st.warning(f"Selected model `{model_to_use}` is unavailable. Switching automatically to `llama-3.3-70b-versatile`...")
-                            model_to_use = "llama-3.3-70b-versatile"
+                    # 2. Execution Loop with Multi-Model Non-Llama Fallback
+                    models_to_try = [selected_model] + [m for m in FAST_NON_LLAMA_MODELS if m != selected_model]
+                    response_text = None
+                    last_error = None
+                    successful_model = None
+
+                    for model_name in models_to_try:
+                        try:
                             llm = ChatGroq(
                                 groq_api_key=groq_api_key,
-                                model_name=model_to_use,
+                                model_name=model_name,
                                 temperature=0.1
                             )
                             chain = prompt | llm | StrOutputParser()
-                            response = chain.invoke({
+                            response_text = chain.invoke({
                                 "location": f"{district} - {proximity_tag}",
                                 "household_profile": household_summary,
                                 "context": context_str
                             })
-                        else:
-                            raise inner_e
+                            successful_model = model_name
+                            break
+                        except Exception as err:
+                            last_error = err
+                            continue
 
-                    st.markdown("---")
-                    st.markdown(response)
+                    if response_text:
+                        if successful_model != selected_model:
+                            st.info(f"Note: Selected model was unavailable. Plan generated using fallback model: `{successful_model}`")
+                        st.markdown("---")
+                        st.markdown(response_text)
+                    else:
+                        st.error(f"Error executing plan generation across models: {last_error}")
                     
                 except Exception as e:
-                    st.error(f"Error executing plan generation: {str(e)}")
+                    st.error(f"System Error: {str(e)}")
 
 # ---------------------------------------------------------------------------
 # TAB 2: WEATHER & FLOOD RISK GRAPHICAL ANALYTICS
