@@ -22,7 +22,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom Styling for Emergency UI
+# Custom Styling
 st.markdown("""
 <style>
     .main-header { font-size: 2.2rem; color: #1E3A8A; font-weight: 800; margin-bottom: 0px; }
@@ -153,8 +153,7 @@ Helplines: PDMA Sindh Control Room: 021-99332005, Rescue 1122 Sindh, Edhi Emerge
 - Edhi Ambulance & Emergency Relief: 115
 - AlKhidmat Foundation Field Relief & Water: 1023
 - Pakistan Red Crescent Society (PRCS): 1030
-- Flood Forecasting Division (FFD) Hotline: 042-99200139
-Ecosystem & Long-Term Measures: Replanting Willow & Poplar trees on slopes (GB/KPK), protecting mangrove buffers in Sindh, implementing porous pavements in urban centers, and preserving river floodplains."""
+- Flood Forecasting Division (FFD) Hotline: 042-99200139"""
     }
 ]
 
@@ -163,7 +162,6 @@ Ecosystem & Long-Term Measures: Replanting Willow & Poplar trees on slopes (GB/K
 # ---------------------------------------------------------------------------
 @st.cache_resource
 def load_vector_store():
-    """Builds an in-memory FAISS vector index using CPU-friendly HuggingFace Embeddings."""
     embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
     documents = [
         Document(
@@ -187,17 +185,17 @@ groq_api_key = st.sidebar.text_input(
     help="Get a free key from console.groq.com"
 )
 
-# Actively supported Groq production models
+# Active Groq production endpoints
+ACTIVE_MODELS = [
+    "llama-3.3-70b-versatile",
+    "llama-3.1-8b-instant"
+]
+
 selected_model = st.sidebar.selectbox(
     "LLM Model (Groq Active Endpoints)",
-    [
-        "llama-3.3-70b-versatile",
-        "mixtral-8x7b-32768",
-        "gemma2-9b-it",
-        "llama-3.2-3b-preview"
-    ],
+    ACTIVE_MODELS,
     index=0,
-    help="Selected active Groq model."
+    help="Select an active Groq production model."
 )
 
 st.sidebar.markdown("---")
@@ -259,34 +257,50 @@ with tab1:
                         for doc in retrieved_docs
                     ])
                     
-                    # 2. Setup Groq Chat Model
-                    llm = ChatGroq(
-                        groq_api_key=groq_api_key,
-                        model_name=selected_model,
-                        temperature=0.1
-                    )
-                    
-                    # 3. Format Prompt & Execute Chain
-                    prompt = ChatPromptTemplate.from_messages([
-                        ("system", SYSTEM_PROMPT),
-                        ("human", "Generate my personalized preparedness plan.")
-                    ])
-                    
-                    chain = prompt | llm | StrOutputParser()
-                    
                     household_summary = (
                         f"Total Members: {total_members} | "
                         f"Elderly: {elderly_count} | "
                         f"Children: {children_count} | "
                         f"Vehicle Access: {'Yes' if has_vehicle else 'No'}"
                     )
-                    
-                    response = chain.invoke({
-                        "location": f"{district} - {proximity_tag}",
-                        "household_profile": household_summary,
-                        "context": context_str
-                    })
-                    
+
+                    prompt = ChatPromptTemplate.from_messages([
+                        ("system", SYSTEM_PROMPT),
+                        ("human", "Generate my personalized preparedness plan.")
+                    ])
+
+                    # 2. Invoke Groq Model with automatic fallback handling
+                    model_to_use = selected_model
+                    try:
+                        llm = ChatGroq(
+                            groq_api_key=groq_api_key,
+                            model_name=model_to_use,
+                            temperature=0.1
+                        )
+                        chain = prompt | llm | StrOutputParser()
+                        response = chain.invoke({
+                            "location": f"{district} - {proximity_tag}",
+                            "household_profile": household_summary,
+                            "context": context_str
+                        })
+                    except Exception as inner_e:
+                        if "decommissioned" in str(inner_e).lower() or "400" in str(inner_e):
+                            st.warning(f"Selected model `{model_to_use}` is unavailable. Switching automatically to `llama-3.3-70b-versatile`...")
+                            model_to_use = "llama-3.3-70b-versatile"
+                            llm = ChatGroq(
+                                groq_api_key=groq_api_key,
+                                model_name=model_to_use,
+                                temperature=0.1
+                            )
+                            chain = prompt | llm | StrOutputParser()
+                            response = chain.invoke({
+                                "location": f"{district} - {proximity_tag}",
+                                "household_profile": household_summary,
+                                "context": context_str
+                            })
+                        else:
+                            raise inner_e
+
                     st.markdown("---")
                     st.markdown(response)
                     
@@ -321,7 +335,6 @@ with tab2:
         st.markdown("---")
         st.markdown("### 📊 7-Day Weather Forecast & Rainfall Probability")
         
-        # Plotly Subplot: Temperature Curve & Rainfall Bar Chart
         fig = make_subplots(
             rows=2, cols=1, 
             shared_xaxes=True, 
@@ -329,7 +342,6 @@ with tab2:
             subplot_titles=("7-Day Temperature Range (°C)", "Daily Expected Precipitation (mm) & Rain Probability (%)")
         )
         
-        # Temperature Traces
         fig.add_trace(
             go.Scatter(x=dates, y=max_temps, name="Max Temp (°C)", line=dict(color="#EF4444", width=3), mode="lines+markers"),
             row=1, col=1
@@ -339,13 +351,10 @@ with tab2:
             row=1, col=1
         )
         
-        # Rain Volume Bar Chart
         fig.add_trace(
             go.Bar(x=dates, y=precip_sum, name="Rainfall (mm)", marker_color="#1D4ED8", opacity=0.7),
             row=2, col=1
         )
-        
-        # Rain Probability Scatter Line
         fig.add_trace(
             go.Scatter(x=dates, y=precip_prob, name="Rain Prob (%)", line=dict(color="#10B981", width=2), mode="lines+markers"),
             row=2, col=1
@@ -354,7 +363,6 @@ with tab2:
         fig.update_layout(height=500, margin=dict(l=20, r=20, t=40, b=20), hovermode="x unified")
         st.plotly_chart(fig, use_container_width=True)
         
-        # 24-Hour High Resolution Timeline
         st.markdown("---")
         st.markdown("### ⏱️ Next 24-Hour Hourly Precipitation Risk Timeline")
         if "hourly" in weather_data:
@@ -390,8 +398,6 @@ with tab2:
 # ---------------------------------------------------------------------------
 with tab3:
     st.subheader("📞 Verified Emergency Directory & Disaster Agencies")
-    st.write("Direct helplines for rescue operations, emergency medical transport, and flood relief across Pakistan.")
-    
     directory_data = [
         {"Organization": "Rescue 1122", "Role": "Primary Medical, Fire & Evacuation Rescue", "Helpline": "1122", "Coverage": "Punjab, KPK, GB, AJK"},
         {"Organization": "NDMA", "Role": "National Disaster Management Authority", "Helpline": "051-111-157-157", "Coverage": "National"},
@@ -404,7 +410,6 @@ with tab3:
         {"Organization": "Pakistan Red Crescent (PRCS)", "Role": "First-Aid & Emergency Shelter Kits", "Helpline": "1030", "Coverage": "National"},
         {"Organization": "Flood Forecasting Division (FFD)", "Role": "Live River & Rain Telemetry", "Helpline": "042-99200139", "Coverage": "National"}
     ]
-    
     st.table(directory_data)
 
 # ---------------------------------------------------------------------------
