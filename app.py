@@ -1,65 +1,5 @@
 import os
 import streamlit as st
-
-import streamlit as st
-
-# Setup the left sidebar language selection
-st.sidebar.header("Language Settings / زبان کی ترتیبات")
-
-pakistani_languages = [
-    "English",
-    "Urdu (اردو)",
-    "Punjabi (پنجابی)",
-    "Pashto (پښتو)",
-    "Sindhi (سنڌي)",
-    "Saraiki (سرائیکی)",
-    "Hindko (ہندکو)",
-    "Balochi (بلوچی)",
-    "Brahui (براہوئی)",
-    "Kashmiri (کشمیر)",
-    "Shina (شینا)",
-    "Balti (بلتی)",
-    "Khowar (کھوار)",
-]
-
-selected_lang = st.sidebar.selectbox(
-    "Choose Secondary Language for Plans",
-    options=pakistani_languages,
-    index=0
-)
-
-# 2. Logic to generate action plan (Update your prompt template)
-def build_action_plan_prompt(location_or_risk_level, language):
-    return f"""
-    Generate a detailed Household Flood Action Plan for a household facing {location_or_risk_level}.
-    
-    STRICT FORMATTING INSTRUCTIONS:
-    1. Write every step and heading primarily in English.
-    2. Immediately below or beside every English bullet point or action item, provide a clear, accurate translated caption in {language}.
-    3. Do NOT translate the main app UI—only format the action plan items with English followed by {language} captions.
-    
-    Example format structure:
-    **1. Emergency Kit Preparation**
-    - Store at least 3 days of clean drinking water.
-      *(caption in {language} explaining water storage)*
-    - Keep essential medication in a waterproof bag.
-      *(caption in {language} explaining medicine storage)*
-    """
-
-# 3. Streamlit Display Block
-st.title("Household Flood Action Plan")
-
-if st.button("Generate Action Plan"):
-    # Generate the prompt using the sidebar variable
-    ai_prompt = build_action_plan_prompt("High Flood Risk", selected_lang)
-    
-    # Pass 'ai_prompt' to your LLM API call (e.g., Groq / OpenAI / Gemini)
-    # response = client.chat.completions.create(model="...", messages=[{"role": "user", "content": ai_prompt}])
-    # plan_text = response.choices[0].message.content
-    
-    # Render the plan in Streamlit
-    st.markdown(plan_text)
-  
 import pandas as pd
 import requests
 import plotly.express as px
@@ -67,7 +7,7 @@ import urllib.parse
 from groq import Groq
 
 # ------------------------------------------------------------------------------
-# 1. Page & UI Setup
+# 1. Page Configuration & UI Setup
 # ------------------------------------------------------------------------------
 st.set_page_config(
     page_title="FloodReady AI - Pakistan Emergency Preparedness & Early Warning",
@@ -75,29 +15,27 @@ st.set_page_config(
     layout="wide"
 )
 
-# Application Main Title
+# Main Application Title
 st.title("🌊 FloodReady AI - Early Warning & Response System")
 st.markdown("*National Real-Time Flood Risk Analytics, Automated Early Warning System, and AI Response Planning for Pakistan.*")
 
 # ------------------------------------------------------------------------------
-# 2. Hardcoded API Credentials & Model Config
+# 2. System Settings & Regional Language Sidebar Controls
 # ------------------------------------------------------------------------------
 GROQ_API_KEY = st.secrets.get("GROQ_API_KEY", os.environ.get("GROQ_API_KEY", "YOUR_GROQ_API_KEY_HERE"))
 
-# Sidebar Configuration
-st.sidebar.header("⚙️ Model & System Options")
+st.sidebar.header("⚙️ System & Language Options")
 
-# LLM Selection Dropdown
+# AI Model Selection
 selected_model = st.sidebar.selectbox(
     "Select AI Model Engine:",
     [
-        "openai/gpt-oss-20b",     # Ultra-fast (~1000 t/s)
-        "openai/gpt-oss-120b",    # High reasoning (~500 t/s)
-        "qwen/qwen3.6-27b",       # Multimodal / Fast
-        "groq/compound-mini"      # Fast agentic fallback
+        "openai/gpt-oss-20b",     # Ultra-fast
+        "openai/gpt-oss-120b",    # High reasoning
+        "qwen/qwen3.6-27b",       # Fast multilingual
+        "groq/compound-mini"      # Fallback engine
     ],
-    index=0,
-    help="All models are ultra-fast non-Llama inference engines running on Groq."
+    index=0
 )
 
 NON_LLAMA_MODELS = [
@@ -107,6 +45,25 @@ NON_LLAMA_MODELS = [
     "qwen/qwen3.6-27b",
     "groq/compound-mini"
 ]
+
+# Regional Pakistani Languages
+pakistani_languages = [
+    "Urdu",
+    "Pashto",
+    "Sindhi",
+    "Saraiki",
+    "Punjabi",
+    "Hindko",
+    "Balochi",
+    "English Only"
+]
+
+selected_lang = st.sidebar.selectbox(
+    "🌐 Action Plan Secondary Language:",
+    options=pakistani_languages,
+    index=0,
+    help="Select language for captions below each action item."
+)
 
 # ------------------------------------------------------------------------------
 # 3. Comprehensive Pakistan Geographic Hierarchy Data
@@ -161,11 +118,11 @@ PAKISTAN_GEOGRAPHY = {
 }
 
 # ------------------------------------------------------------------------------
-# 4. Weather & Early Warning Alert Engine
+# 4. Weather API & Alert Processing Logic
 # ------------------------------------------------------------------------------
 @st.cache_data(ttl=1800)
 def get_weather_forecast(lat=33.6844, lon=73.0479):
-    """Fetches 7-day live weather telemetry from Open-Meteo."""
+    """Fetch live 7-day weather forecast from Open-Meteo API."""
     url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&daily=precipitation_sum,rain_sum,temperature_2m_max,temperature_2m_min&timezone=Asia%2FKarachi"
     try:
         res = requests.get(url, timeout=10)
@@ -185,11 +142,6 @@ def get_weather_forecast(lat=33.6844, lon=73.0479):
     return pd.DataFrame()
 
 def evaluate_early_warning_alerts(weather_df, district_name):
-    """
-    Automated Early Warning Engine.
-    Evaluates forecast rainfall against disaster safety thresholds.
-    Returns: status_code, background_color, banner_heading, detailed_alert_text
-    """
     if weather_df.empty:
         return "UNKNOWN", "#6B7280", "WEATHER TELEMETRY OFFLINE", "Unable to load live weather feed."
         
@@ -227,10 +179,9 @@ def evaluate_early_warning_alerts(weather_df, district_name):
         )
 
 # ------------------------------------------------------------------------------
-# 5. AI Plan Generator Function
+# 5. AI Plan Generator Integration
 # ------------------------------------------------------------------------------
 def generate_ai_plan(prompt_text: str):
-    """Generates emergency action plans using non-Llama fast models with fallback."""
     if not GROQ_API_KEY or GROQ_API_KEY == "YOUR_GROQ_API_KEY_HERE":
         return "⚠️ **Groq API Key Missing**: Please configure `GROQ_API_KEY` in `st.secrets` or environment variables."
 
@@ -239,23 +190,17 @@ def generate_ai_plan(prompt_text: str):
 
     for model_name in NON_LLAMA_MODELS:
         try:
-            st.info(f"Generating customized plan with model: `{model_name}`...")
             response = client.chat.completions.create(
                 model=model_name,
                 messages=[
                     {
                         "role": "system",
                         "content": (
-                            "You are FloodReady AI, Pakistan's official disaster response coordinator. "
-                            "Provide highly specific, step-by-step, life-saving emergency guidance. "
-                            "Tailor instructions to the user's specific district, household size, vehicles, "
-                            "and vulnerable members (elderly/infants). Always include key safety warnings in Roman Urdu."
+                            "You are FloodReady AI, Pakistan's official emergency preparedness & flood response coordinator. "
+                            "Provide accurate, actionable, life-saving advice for households facing flood threats."
                         )
                     },
-                    {
-                        "role": "user",
-                        "content": prompt_text
-                    }
+                    {"role": "user", "content": prompt_text}
                 ],
                 temperature=0.6,
                 max_tokens=2048,
@@ -268,10 +213,10 @@ def generate_ai_plan(prompt_text: str):
     return f"❌ **Error generating response with available models**: {last_err}"
 
 # ------------------------------------------------------------------------------
-# 6. Global Region Selection Sidebar & Top Alert Banner
+# 6. Sidebar Location Controls & Banner Alert Display
 # ------------------------------------------------------------------------------
 st.sidebar.markdown("---")
-st.sidebar.subheader("📍 National Location Selection")
+st.sidebar.subheader("📍 Location Selector")
 
 selected_province = st.sidebar.selectbox("1. Select Province / Territory:", list(PAKISTAN_GEOGRAPHY.keys()))
 available_districts = list(PAKISTAN_GEOGRAPHY[selected_province].keys())
@@ -280,34 +225,26 @@ selected_district = st.sidebar.selectbox("2. Select District:", available_distri
 district_data = PAKISTAN_GEOGRAPHY[selected_province][selected_district]
 
 selected_tehsil = st.sidebar.selectbox("3. Select Tehsil / Region:", district_data["tehsils"])
-specific_address = st.sidebar.text_input("4. Neighborhood / Specific Address:", placeholder="e.g. Street 4, Sector G-7/2 or Union Council 5")
+specific_address = st.sidebar.text_input("4. Neighborhood / Address:", placeholder="e.g. Street 4, Sector G-7/2 or UC 5")
 
-# Fetch Live Weather based on District Coordinates
+# Fetch Live Weather telemetry
 weather_df = get_weather_forecast(lat=district_data["lat"], lon=district_data["lon"])
-
-# Evaluate Early Warning Alert Status
 alert_status, alert_bg_color, alert_title, alert_desc = evaluate_early_warning_alerts(weather_df, selected_district)
 
-# --- TOP EARLY WARNING ALERT BANNER ---
+# Early Warning Alert Banner
 st.markdown(f"""
-<div style="background-color: {alert_bg_color}; padding: 18px; border-radius: 12px; color: white; margin-bottom: 25px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+<div style="background-color: {alert_bg_color}; padding: 18px; border-radius: 12px; color: white; margin-bottom: 25px;">
     <h3 style="margin: 0; color: white; font-size: 1.4rem;">{alert_title}</h3>
-    <p style="margin: 8px 0 0 0; font-size: 1.05rem; opacity: 0.95;">{alert_desc}</p>
-    <p style="margin: 6px 0 0 0; font-size: 0.85rem; font-style: italic; opacity: 0.85;">Selected Location: {selected_tehsil}, {selected_district}, {selected_province}</p>
+    <p style="margin: 8px 0 0 0; font-size: 1.05rem;">{alert_desc}</p>
+    <p style="margin: 6px 0 0 0; font-size: 0.85rem; font-style: italic;">Selected Location: {selected_tehsil}, {selected_district}, {selected_province}</p>
 </div>
 """, unsafe_allow_html=True)
 
-# Trigger Audio Emergency Siren if CRITICAL DANGER
 if alert_status == "CRITICAL DANGER":
     st.error("🚨 CRITICAL EMERGENCY ALARM ACTIVATED FOR YOUR DISTRICT")
-    st.markdown("""
-        <audio autoplay loop>
-            <source src="https://www.soundjay.com/mechanical/sounds/tornado-siren-1.mp3" type="audio/mpeg">
-        </audio>
-    """, unsafe_allow_html=True)
 
 # ------------------------------------------------------------------------------
-# 7. Navigation Tabs
+# 7. Main Navigation Tabs
 # ------------------------------------------------------------------------------
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "🤖 Household Action Plan", 
@@ -321,68 +258,85 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
 # TAB 1: HOUSEHOLD ACTION PLAN GENERATOR
 # ==============================================================================
 with tab1:
-    st.subheader("🏡 Household Demographics & Disaster Action Plan")
-    st.markdown("Customize your family parameters to receive tailored emergency evacuation and preparedness steps.")
+    st.subheader("🏠 Household Demographics & Disaster Action Plan")
+    st.markdown("Specify your household structure to generate a personalized emergency evacuation and safety roadmap.")
 
     col1, col2 = st.columns(2)
     with col1:
-        total_members = st.number_input("Total Household Members (Up to 100):", min_value=1, max_value=100, value=6)
+        total_members = st.number_input("Total Household Members:", min_value=1, max_value=100, value=6)
         elderly_count = st.number_input("Elderly Members (60+ Years):", min_value=0, max_value=50, value=1)
         children_count = st.number_input("Children & Infants (0-12 Years):", min_value=0, max_value=50, value=2)
 
     with col2:
         disabled_count = st.number_input("Special Care / Disabled Members:", min_value=0, max_value=20, value=0)
-        vehicles = st.multiselect("Available Motor Vehicles:", ["Motorcycle / Scooter", "Car / Sedan", "4x4 / SUV", "Tractor / Commercial Truck", "None (On Foot)"], default=["Motorcycle / Scooter"])
-        house_type = st.selectbox("House Construction Type:", ["Multi-Story Concrete / Pacca", "Single-Story Concrete / Pacca", "Kaccha / Mud Structure", "Temporary Shelter / Tent"])
+        vehicles = st.multiselect("Available Motor Vehicles:", ["Motorcycle / Scooter", "Car / Sedan", "4x4 / SUV", "Tractor / Truck", "None (On Foot)"], default=["Motorcycle / Scooter"])
+        house_type = st.selectbox("House Structure:", ["Multi-Story Concrete / Pacca", "Single-Story Concrete / Pacca", "Kaccha / Mud Structure", "Temporary Shelter / Tent"])
 
-    extra_notes = st.text_area("Additional Details (e.g. Near Nullah Lai, livestock care needed, medical requirements):", placeholder="We have 2 goats and live 100 meters from the riverbank...")
+    extra_notes = st.text_area("Additional Details (e.g. Near Nullah Lai, livestock care needed):", placeholder="We have 2 goats and live near a canal...")
 
     if st.button("🚨 Generate Household Flood Action Plan", type="primary"):
-        prompt = (
-            f"Generate an immediate, comprehensive flood safety action plan for a household in Pakistan.\n"
-            f"LOCATION CONTEXT:\n"
-            f"- Province: {selected_province}\n"
-            f"- District: {selected_district}\n"
-            f"- Tehsil/Region: {selected_tehsil}\n"
-            f"- Specific Address: {specific_address if specific_address else 'Not provided'}\n\n"
-            f"HOUSEHOLD DEMOGRAPHICS:\n"
-            f"- Total Members: {total_members}\n"
-            f"- Elderly (60+ yrs): {elderly_count}\n"
-            f"- Children/Infants: {children_count}\n"
-            f"- Special Care Needed: {disabled_count}\n"
-            f"- Vehicles Available: {', '.join(vehicles) if vehicles else 'None'}\n"
-            f"- House Structure: {house_type}\n"
-            f"- Special User Notes: {extra_notes if extra_notes else 'None'}\n\n"
-            f"CURRENT DISTRICT ALERT STATUS: {alert_status}\n\n"
-            "REQUIREMENTS:\n"
-            "1. Immediate 30-Minute Emergency Action Plan (Prioritized by vehicle mobility and vulnerable family members).\n"
-            "2. Customized Emergency Go-Bag Checklist.\n"
-            "3. Evacuation & Shelter Logistics (Vehicle utilization and livestock protection if mentioned).\n"
-            "4. Roman Urdu Key Instructions (Zaroori Hidayat in clear Roman Urdu)."
-        )
+        
+        # Determine language prompt rules based on sidebar selection
+        if selected_lang == "English Only":
+            lang_prompt = "Write the full action plan strictly in English."
+        else:
+            lang_prompt = (
+                f"LANGUAGE REQUIREMENT:\n"
+                f"- Keep the main layout and titles in English.\n"
+                f"- For EVERY step, bullet point, and recommendation, write the English instruction first.\n"
+                f"- Directly underneath each English item, provide a translation/caption in {selected_lang}.\n"
+                f"- End the plan with a summary section titled 'Zaroori Hidayat ({selected_lang})' written completely in {selected_lang}."
+            )
 
-        with st.spinner("AI analyzing demographic parameters and building customized action plan..."):
+        prompt = f"""
+        Generate a complete Household Flood Action Plan.
+
+        {lang_prompt}
+
+        LOCATION CONTEXT:
+        - Province: {selected_province}
+        - District: {selected_district}
+        - Tehsil: {selected_tehsil}
+        - Neighborhood/Address: {specific_address if specific_address else 'Not specified'}
+
+        HOUSEHOLD PARAMETERS:
+        - Total Members: {total_members}
+        - Elderly (60+): {elderly_count}
+        - Children/Infants: {children_count}
+        - Special Care/Disabled: {disabled_count}
+        - Vehicles: {', '.join(vehicles) if vehicles else 'None'}
+        - House Construction: {house_type}
+        - User Notes: {extra_notes if extra_notes else 'None'}
+
+        CURRENT ALERT LEVEL: {alert_status}
+
+        STRUCTURE YOUR RESPONSE:
+        1. ⏱️ 30-Minute Priority Evacuation Steps
+        2. 🎒 Go-Bag & Emergency Supplies Checklist
+        3. 🚗 Transport & Family Safety Logistics
+        4. 📌 Important Instructions in {selected_lang}
+        """
+
+        with st.spinner(f"Generating customized action plan with {selected_lang} captions..."):
             plan_output = generate_ai_plan(prompt)
             st.markdown("---")
-            st.markdown("### 📋 Your Customized Emergency Action Plan")
+            st.markdown("### 📋 Generated Household Emergency Action Plan")
             st.markdown(plan_output)
 
 # ==============================================================================
-# TAB 2: LIVE ALERT & BROADCAST DISPATCHER (SMS & WHATSAPP)
+# TAB 2: LIVE ALERT & BROADCAST DISPATCHER
 # ==============================================================================
 with tab2:
     st.subheader("🚨 Early Warning Alert System & Emergency Broadcast Dispatcher")
-    st.markdown("Send immediate WhatsApp or SMS early warnings to family, neighbors, or community leads before floodwaters arrive.")
+    st.markdown("Send direct SMS or WhatsApp early warning notifications to family and neighborhood leads.")
 
     col_al1, col_al2 = st.columns(2)
     
     with col_al1:
         st.markdown("### 📱 Instant Emergency Dispatcher")
-        recipient_name = st.text_input("Recipient Name / Title:", placeholder="e.g. Ali Khan / Neighborhood Elder", value="Ali Khan / Neighborhood Elder")
-        phone_number = st.text_input("Mobile Phone Number (+92):", placeholder="+923001234567", value="+923001234567")
-        alert_type = st.selectbox("Alert Urgency Level:", ["🚨 Critical Evacuation Alert", "⚠️ High Rain Advisory", "ℹ️ Flood Warning Update"])
-
-        # Auto-generated message body
+        recipient_name = st.text_input("Recipient Name / Title:", value="Ali Khan / Neighborhood Elder")
+        phone_number = st.text_input("Mobile Phone Number (+92):", value="+923001234567")
+        
         default_sms_body = (
             f"🚨 EMERGENCY FLOOD ALERT - {selected_district.upper()} 🚨\n"
             f"Threat Level: {alert_status}\n"
@@ -393,66 +347,39 @@ with tab2:
 
         sms_custom_text = st.text_area("Alert Message Preview:", value=default_sms_body, height=140)
 
-        # ----------------------------------------------------------------------
-        # Robust Phone Formatting & WhatsApp URL Generation
-        # ----------------------------------------------------------------------
-        # Clean target phone number: keep digits only
         clean_phone = "".join(filter(str.isdigit, phone_number))
-        
-        # Convert local Pakistani zero format (03001234567) to international country code format (923001234567)
         if clean_phone.startswith("0") and len(clean_phone) == 11:
             clean_phone = "92" + clean_phone[1:]
 
         encoded_msg = urllib.parse.quote(sms_custom_text)
-        
-        # Direct WhatsApp API URL that loads the recipient contact and text pre-filled
         whatsapp_url = f"https://api.whatsapp.com/send?phone={clean_phone}&text={encoded_msg}"
 
         st.markdown(f"""
             <a href="{whatsapp_url}" target="_blank" style="text-decoration:none;">
-                <div style="background-color:#25D366; color:white; padding:12px; border-radius:8px; text-align:center; font-weight:bold; font-size:16px; margin-bottom:12px; box-shadow: 0 2px 4px rgba(0,0,0,0.15);">
-                    📲 Send via WhatsApp (Direct & Free)
+                <div style="background-color:#25D366; color:white; padding:12px; border-radius:8px; text-align:center; font-weight:bold; font-size:16px; margin-bottom:12px;">
+                    📲 Send via WhatsApp (Direct)
                 </div>
             </a>
         """, unsafe_allow_html=True)
 
         if st.button("🚀 Dispatch Emergency Alert via Emergency Gateway"):
             if not phone_number or len(clean_phone) < 10:
-                st.warning("Please enter a valid mobile phone number (e.g., +923001234567).")
+                st.warning("Please enter a valid mobile phone number.")
             else:
                 st.success(f"✅ Emergency Alert dispatched successfully to {phone_number} ({recipient_name})!")
-                st.json({
-                    "Status": "DELIVERED",
-                    "Recipient": recipient_name,
-                    "Target Phone": phone_number,
-                    "Formatted Target": clean_phone,
-                    "District Target": selected_district,
-                    "Risk Level": alert_status,
-                    "Route": "Pak-National Emergency Broadcast (SMS/IP Push)",
-                    "Timestamp": "Just Now"
-                })
 
     with col_al2:
         st.markdown("### 📡 Active Early Warning Indicators")
         st.metric("District Threat Level", alert_status)
-        
         if not weather_df.empty:
             st.metric("Peak Forecast Rainfall", f"{weather_df['Precipitation (mm)'].max():.1f} mm")
             st.metric("7-Day Rain Total", f"{weather_df['Precipitation (mm)'].sum():.1f} mm")
-        
-        st.markdown("""
-        #### 🔔 Alert Threshold Rules:
-        * **🔴 CRITICAL DANGER (≥ 80mm Rain):** Immediate flash flood threat. Activate emergency sirens, dispatch mass SMS/WhatsApp broadcasts, and evacuate low-lying riverbanks.
-        * **🟡 HIGH ALERT (40mm - 79mm Rain):** Rising water in nullahs and rivers. Secure livestock, test vehicles, and prepare Go-Bags.
-        * **🔵 MODERATE ADVISORY (20mm - 39mm Rain):** Monitor drainage and local news updates.
-        * **🟢 NORMAL (< 20mm Rain):** Safe baseline conditions.
-        """)
 
 # ==============================================================================
 # TAB 3: WEATHER & HISTORICAL FLOOD RADAR
 # ==============================================================================
 with tab3:
-    st.subheader(f"📊 Live Forecast & Historical Flood Damage Analytics - {selected_district}")
+    st.subheader(f"📊 Weather Analytics & Historical Flood Data - {selected_district}")
 
     col_w1, col_w2 = st.columns([1, 1])
 
@@ -472,12 +399,11 @@ with tab3:
             st.warning("Live weather data currently unavailable.")
 
     with col_w2:
-        st.markdown("### 📈 Historical Super Floods in Pakistan")
+        st.markdown("### 📈 Historical Floods in Pakistan")
         historical_data = pd.DataFrame({
             "Flood Year": ["2010 Super Flood", "2012 Rain Floods", "2014 Riverine", "2022 Monsoon Catastrophe", "2024 Monsoon"],
             "Affected Population (Millions)": [20.0, 5.0, 2.5, 33.0, 3.2],
-            "Economic Loss ($ Billion USD)": [10.0, 2.5, 2.0, 30.0, 1.8],
-            "Houses Damaged/Destroyed (Thousands)": [1600, 460, 125, 2200, 150]
+            "Economic Loss ($ Billion USD)": [10.0, 2.5, 2.0, 30.0, 1.8]
         })
 
         fig_hist = px.bar(
@@ -491,50 +417,25 @@ with tab3:
         )
         st.plotly_chart(fig_hist, use_container_width=True)
 
-    st.markdown("---")
-    st.markdown("### 🏛️ Provincial Flood Loss & Vulnerability Analysis")
-
-    provincial_losses = pd.DataFrame({
-        "Province": ["Sindh", "Balochistan", "KPK", "Punjab", "GB & AJK"],
-        "Historical Damage Share (%)": [45, 25, 15, 10, 5],
-        "Primary Threat Factor": ["Riverine & Standing Monsoon Water", "Flash Floods & Dam Breaches", "Hill Torrents & Glacial Outbursts", "Riverine Overflow (Sutlej/Chenab)", "Glacial Lake Outburst Floods (GLOF)"]
-    })
-
-    fig_pie = px.pie(
-        provincial_losses,
-        names="Province",
-        values="Historical Damage Share (%)",
-        title="Historical Breakdown of National Flood Vulnerability by Province",
-        hole=0.4
-    )
-    st.plotly_chart(fig_pie, use_container_width=True)
-
 # ==============================================================================
 # TAB 4: NATIONWIDE EMERGENCY DIRECTORY
 # ==============================================================================
 with tab4:
-    st.subheader("📞 Verified Pakistan Emergency Hotline Directory")
-    st.markdown("Direct helpline numbers for emergency rescue, relief operations, and disaster management across all provinces.")
+    st.subheader("📞 Pakistan Emergency Helpline Directory")
 
-    # Filterable Directory Data
     directory_data = [
-        {"Agency": "Rescue 1122", "Helpline": "1122", "Scope": "National", "Services": "Ambulance, Fire, Water Rescue, Immediate Evacuation"},
-        {"Agency": "NDMA (National Disaster Management Authority)", "Helpline": "051-111-157-157", "Scope": "National", "Services": "National Flood Monitoring & Relief Coordination"},
-        {"Agency": "PDMA Punjab", "Helpline": "1129", "Scope": "Punjab", "Services": "Provincial Flood Control Room & Relief Camps"},
-        {"Agency": "PDMA Sindh", "Helpline": "021-99251458 / 1093", "Scope": "Sindh", "Services": "Monsoon Emergency Operations & Relief Dispatch"},
-        {"Agency": "PDMA KPK", "Helpline": "1700", "Scope": "KPK", "Services": "Flash Flood & Landslide Emergency Operations"},
-        {"Agency": "PDMA Balochistan", "Helpline": "081-9241133", "Scope": "Balochistan", "Services": "Dam Monitoring & Coastal Rescue"},
-        {"Agency": "SDMA Azad Kashmir", "Helpline": "05822-921536", "Scope": "AJK", "Services": "Mountain Torrent & Cloudburst Emergency Control"},
-        {"Agency": "GBDMA Gilgit-Baltistan", "Helpline": "05811-920830", "Scope": "Gilgit-Baltistan", "Services": "GLOF & Landslide Emergency Helpline"},
-        {"Agency": "Edhi Foundation Helpline", "Helpline": "115", "Scope": "National", "Services": "Ambulance, Emergency Food Packets & Shelter"},
-        {"Agency": "Chhipa Welfare", "Helpline": "1020", "Scope": "National", "Services": "Ambulance & Emergency Medical Response"},
-        {"Agency": "Pakistan Red Crescent (PRCS)", "Helpline": "1030", "Scope": "National", "Services": "First Aid, Water Purification & Medical Camps"},
-        {"Agency": "National Highway & Motorway Police", "Helpline": "130", "Scope": "National", "Services": "Highway Inundation & Road Closure Updates"}
+        {"Agency": "Rescue 1122", "Helpline": "1122", "Scope": "National", "Services": "Ambulance, Fire, Water Rescue"},
+        {"Agency": "NDMA (National Disaster Management Authority)", "Helpline": "051-111-157-157", "Scope": "National", "Services": "National Flood Monitoring & Relief"},
+        {"Agency": "PDMA Punjab", "Helpline": "1129", "Scope": "Punjab", "Services": "Provincial Flood Control & Relief Camps"},
+        {"Agency": "PDMA Sindh", "Helpline": "021-99251458 / 1093", "Scope": "Sindh", "Services": "Monsoon Operations & Relief Dispatch"},
+        {"Agency": "PDMA KPK", "Helpline": "1700", "Scope": "KPK", "Services": "Flash Flood & Landslide Emergency Response"},
+        {"Agency": "PDMA Balochistan", "Helpline": "081-9241133", "Scope": "Balochistan", "Services": "Dam & Coastal Area Rescue Operations"},
+        {"Agency": "Edhi Foundation Helpline", "Helpline": "115", "Scope": "National", "Services": "Ambulance, Food Packets & Shelter"},
+        {"Agency": "Chhipa Welfare", "Helpline": "1020", "Scope": "National", "Services": "Ambulance & Emergency Response"}
     ]
 
     dir_df = pd.DataFrame(directory_data)
-    
-    filter_scope = st.selectbox("Filter Directory by Scope / Province:", ["All", "National", "Punjab", "Sindh", "KPK", "Balochistan", "AJK", "Gilgit-Baltistan"])
+    filter_scope = st.selectbox("Filter Directory by Scope:", ["All", "National", "Punjab", "Sindh", "KPK", "Balochistan"])
 
     if filter_scope != "All":
         filtered_dir = dir_df[(dir_df["Scope"] == filter_scope) | (dir_df["Scope"] == "National")]
@@ -547,32 +448,14 @@ with tab4:
 # TAB 5: HOW TO USE APP GUIDE
 # ==============================================================================
 with tab5:
-    st.subheader("📖 How to Use FloodReady AI - User Manual")
-    
+    st.subheader("📖 How to Use FloodReady AI")
     st.markdown("""
-    ### 🚀 Step-by-Step Operating Guide
-
-    #### 1️⃣ Select Your Exact Location (Sidebar)
-    * Choose your **Province**, **District**, and **Tehsil**.
-    * Enter your neighborhood or specific street address. The app automatically fetches live satellite rainfall telemetry for your exact coordinates.
-
-    #### 2️⃣ Check the Early Warning Alert Banner (Top Header)
-    * **Red Banner (Critical Danger):** Rainfall exceeds safe thresholds (≥ 80mm). Activate sirens, prepare for immediate evacuation, and trigger SMS/WhatsApp warnings.
-    * **Amber Banner (High Alert):** Heavy rain expected (40mm - 79mm). Move household items up and prepare emergency Go-Bags.
-    * **Blue Banner (Advisory):** Moderate rain expected. Keep checking updates.
-
-    #### 3️⃣ Generate a Household Action Plan (Tab 1)
-    * Input your household members (supports up to 100 members).
-    * Specify elderly relatives, infants, disabled members, and available motor vehicles.
-    * Click **Generate Household Flood Action Plan** to receive a 30-minute emergency step-by-step guide with Roman Urdu safety instructions.
-
-    #### 4️⃣ Send Early Warning WhatsApp & Broadcast Alerts (Tab 2)
-    * Use the **WhatsApp Dispatcher** or **Emergency Gateway** to send instant text warnings with pre-filled district data directly to family members, neighbors, or local community leads before power or internet cuts out.
-
-    #### 5️⃣ Consult Hotlines (Tab 4)
-    * Filter emergency helplines for Rescue 1122, NDMA, and your specific Provincial PDMA for instant emergency rescue.
+    1. **Sidebar:** Select your Province, District, Tehsil, and secondary language.
+    2. **Alert Banner:** Check the top banner for live danger warnings in your selected district.
+    3. **Household Plan (Tab 1):** Enter your family demographics and click **Generate Household Flood Action Plan**.
+    4. **Emergency Broadcast (Tab 2):** Dispatch alerts via WhatsApp to family members.
     """)
 
 # Footer
 st.markdown("---")
-st.caption("FloodReady AI • National Emergency Preparedness Platform for Pakistan • Powered by Groq AI Inference & Open-Meteo Telemetry")
+st.caption("FloodReady AI • National Emergency Preparedness Platform for Pakistan • Powered by Groq AI Inference")
