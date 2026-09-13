@@ -1,5 +1,35 @@
 import os
 import streamlit as st
+
+import streamlit as st
+
+# Setup the left sidebar language selection
+st.sidebar.header("Language Settings / زبان کی ترتیبات")
+
+pakistani_languages = [
+    "English",
+    "Urdu (اردو)",
+    "Punjabi (پنجابی)",
+    "Pashto (پښتو)",
+    "Sindhi (سنڌي)",
+    "Saraiki (سرائیکی)",
+    "Hindko (ہندکو)",
+    "Balochi (بلوچی)",
+    "Brahui (براہوئی)",
+    "Kashmiri (کشمیر)",
+    "Shina (شینا)",
+    "Balti (بلتی)",
+    "Khowar (کھوار)",
+]
+
+selected_language = st.sidebar.selectbox(
+    label="Choose Language / زبان منتخب کریں",
+    options=pakistani_languages,
+    index=0,
+)
+
+# Optional feedback display in the sidebar
+st.sidebar.caption(f"Active Language: {selected_language}")
 import pandas as pd
 import requests
 import plotly.express as px
