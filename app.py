@@ -22,14 +22,44 @@ pakistani_languages = [
     "Khowar (کھوار)",
 ]
 
-selected_language = st.sidebar.selectbox(
-    label="Choose Language / زبان منتخب کریں",
+selected_lang = st.sidebar.selectbox(
+    "Choose Secondary Language for Plans",
     options=pakistani_languages,
-    index=0,
+    index=0
 )
 
-# Optional feedback display in the sidebar
-st.sidebar.caption(f"Active Language: {selected_language}")
+# 2. Logic to generate action plan (Update your prompt template)
+def build_action_plan_prompt(location_or_risk_level, language):
+    return f"""
+    Generate a detailed Household Flood Action Plan for a household facing {location_or_risk_level}.
+    
+    STRICT FORMATTING INSTRUCTIONS:
+    1. Write every step and heading primarily in English.
+    2. Immediately below or beside every English bullet point or action item, provide a clear, accurate translated caption in {language}.
+    3. Do NOT translate the main app UI—only format the action plan items with English followed by {language} captions.
+    
+    Example format structure:
+    **1. Emergency Kit Preparation**
+    - Store at least 3 days of clean drinking water.
+      *(caption in {language} explaining water storage)*
+    - Keep essential medication in a waterproof bag.
+      *(caption in {language} explaining medicine storage)*
+    """
+
+# 3. Streamlit Display Block
+st.title("Household Flood Action Plan")
+
+if st.button("Generate Action Plan"):
+    # Generate the prompt using the sidebar variable
+    ai_prompt = build_action_plan_prompt("High Flood Risk", selected_lang)
+    
+    # Pass 'ai_prompt' to your LLM API call (e.g., Groq / OpenAI / Gemini)
+    # response = client.chat.completions.create(model="...", messages=[{"role": "user", "content": ai_prompt}])
+    # plan_text = response.choices[0].message.content
+    
+    # Render the plan in Streamlit
+    st.markdown(plan_text)
+  
 import pandas as pd
 import requests
 import plotly.express as px
